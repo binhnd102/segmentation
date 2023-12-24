@@ -1,40 +1,47 @@
 import torch
-import numpy as np
-from tqdm import tqdm
 import torch.nn as nn
-import torch.functional as F
-from typing import Protocol, List
-from dataclasses import dataclass, field
-from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader
+
+
+CONV_KERNER_SIZE = 3
+CONV_STRIDE = 1
+CONV_PADDING = 1
+CONV_BIAS = True
+
+SCALING_FACTOR = 2
+
+
+ATTN_KERNEL_SIZE = 1
+ATTN_KERNEL_STRIDE = 1
+ATTN_PADDING = 0
+ATTN_BIAS = True
+
 
 class ConvBlock(nn.Module):
-
-    def __init__(self, in_channels, out_channels):
-        super(ConvBlock, self).__init__()
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__()
 
         self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.Conv2d(in_channels, out_channels, kernel_size=CONV_KERNER_SIZE, stride=CONV_STRIDE, padding=CONV_PADDING, bias=CONV_BIAS),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.Conv2d(out_channels, out_channels, kernel_size=CONV_KERNER_SIZE, stride=CONV_STRIDE, padding=CONV_PADDING, bias=CONV_BIAS),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True)
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv(x)
         return x
 
 
 class UpConv(nn.Module):
 
-    def __init__(self, in_channels, out_channels):
-        super(UpConv, self).__init__()
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__()
 
         self.up = nn.Sequential(
-            nn.Upsample(scale_factor=2),
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.Upsample(scale_factor=SCALING_FACTOR),
+            nn.Conv2d(in_channels, out_channels, kernel_size=CONV_STRIDE, stride=CONV_STRIDE, padding=CONV_PADDING, bias=True),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True)
         )
@@ -53,7 +60,7 @@ class AttentionBlock(nn.Module):
         :param F_l: number of feature maps in corresponding encoder layer, transferred via skip connection
         :param n_coefficients: number of learnable multi-dimensional attention coefficients
         """
-        super(AttentionBlock, self).__init__()
+        super().__init__()
 
         self.W_gate = nn.Sequential(
             nn.Conv2d(F_g, n_coefficients, kernel_size=1, stride=1, padding=0, bias=True),
