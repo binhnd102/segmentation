@@ -1,5 +1,6 @@
 import os
 import cv2
+import h5py
 import torch
 import numpy as np
 import albumentations as A
@@ -29,6 +30,10 @@ DEFAULT_TRANSFORM = A.Compose([
         p=0.9,
     ),
 
+])
+
+VAL_TRANSFORM = A.Compose([
+    A.Resize(256,256, interpolation=cv2.INTER_NEAREST),
 ])
 
 
@@ -133,6 +138,60 @@ class SegmentationDataset(Dataset):
         return torch.stack(images, dim=0), torch.concat(masks, dim=0)
 
 
+def rle_decode(mask_rle, shape):
+    '''
+    mask_rle: run-length as string formated (start length)
+    shape: (height,width) of array to return
+    Returns numpy array, 1 - mask, 0 - background
+
+    '''
+    s = mask_rle.split()
+    starts, lengths = [
+        np.asarray(x, dtype=int) for x in (s[0:][::2], s[1:][::2])
+    ]
+    starts -= 1
+    ends = starts + lengths
+    img = np.zeros(shape[0] * shape[1], dtype=np.uint8)
+    for lo, hi in zip(starts, ends):
+        img[lo:hi] = 1
+    return img.reshape(shape)
+
+
+def subset_preprocess_mask(lre, H=1303, W=912):
+    mask = rle_decode(lre, (H, W))
+    mask_tensor = torch.Tensor(mask)
+    resized_mask_tensor = Resize((H//2, W//2))(torch.unsqueeze(mask_tensor, 0)).squeeze()
+    return resized_mask_tensor
+
+
+class H5ImageProcess:
+    def __init__(self, dataset_path):
+        self.dataset_path = dataset_path
+    
+
+    def _transform(self, image_arr):
+        image_arr = image_arr.astype(np.float32)
+        image_arr = np.tile(image_arr[...,None],[1, 1, 3]) 
+        mx = np.max(image_arr)
+        if mx:
+            image_arr/=mx 
+        img = np.transpose(image_arr, (2, 0, 1))
+        img_ten = torch.tensor(img)
+        return img_ten
+    
+    def preprocess_image_train(self, idx):
+        with h5py.File(self.dataset_path, "r") as f:
+            arr = f["kidney_1_dense/arr"][idx]
+            min_value = f["kidney_1_dense/arr"][idx]
+        arr = arr + min_value
+        return self._transform(arr)
+    
+    def preprocess_image_val(self, idx):
+        with h5py.File(self.dataset_path, "r") as f:
+            arr = f["kidney_3_dense/arr"][idx]
+            min_value = f["kidney_3_dense/arr"][idx]
+        arr = arr + min_value
+        return self._transform(arr)
 
 def main():
     image_files, label_files = tuple(zip(*list(get_image_and_mask("data/annotations/annotations/list.txt", prefix="./data"))))

@@ -25,6 +25,8 @@ import os
 from callbacks import VisualizeValDataCallback
 from metrics import dice_coeff
 from losses import FocalLoss
+import pandas as pd
+from data import H5ImageProcess, Augmenter, DEFAULT_TRANSFORM, subset_preprocess_mask, VAL_TRANSFORM
 
 
 WANDB_KEY = "c80518dc0bbbe535960d500c6885d81a9ef26bcb"
@@ -78,27 +80,63 @@ class SegmentationModel(L.LightningModule):
 
 
 if __name__ == "__main__":
-    DATA_PATH = "data/annotations/annotations/list.txt"
+    # This is animal data
+    # DATA_PATH = "data/annotations/annotations/list.txt"
     
-    image_files, label_files = tuple(zip(*list(get_image_and_mask(DATA_PATH, prefix="./data"))))
-    train_image_files, val_image_files, train_mask_files, val_mask_files = train_test_split(
-        image_files, label_files, test_size=0.2, random_state=42)
+    # image_files, label_files = tuple(zip(*list(get_image_and_mask(DATA_PATH, prefix="./data"))))
+    # train_image_files, val_image_files, train_mask_files, val_mask_files = train_test_split(
+    #     image_files, label_files, test_size=0.2, random_state=42)
 
-    train_dataset = SegmentationDataset(train_image_files, train_mask_files)
-    val_dataset = SegmentationDataset(val_image_files, val_mask_files)
+    # train_dataset = SegmentationDataset(train_image_files, train_mask_files)
+    # val_dataset = SegmentationDataset(val_image_files, val_mask_files)
 
-    train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=8, shuffle=False)
+    # train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True)
+    # val_dataloader = DataLoader(val_dataset, batch_size=8, shuffle=False)
+    # This is subset kidney data
+
+    DATA_PATH = "data/kaggle/data.hdf5"
+    gt_df = pd.read_csv("/mnt/d/Coding/segmentation/data/kaggle/subset_gt.csv")
+    train_df = gt_df[gt_df["group"]=="kidney_1_dense"]
+    val_df = gt_df[gt_df["group"]=="kidney_3_dense"]
+    h5_image_process = H5ImageProcess(DATA_PATH)
+    augmenter = Augmenter(DEFAULT_TRANSFORM)
+
+    train_image_files = list(np.arange(0, len(train_df)))
+    train_mask_files = train_df["rle"].values
+    train_dataset = SegmentationDataset(
+        images_file=train_image_files,
+        masks_file=train_mask_files,
+        preprocess_image_fn=h5_image_process.preprocess_image_train,
+        preprocess_mask_fn=subset_preprocess_mask
+    )
+
+    val_image_files = list(np.arange(0, len(val_df)))
+    val_mask_files = val_df["rle"].values
+    val_dataset = SegmentationDataset(
+        images_file=val_image_files,
+        masks_file=val_mask_files,
+        preprocess_image_fn=h5_image_process.preprocess_image_val,
+        preprocess_mask_fn=lambda x: subset_preprocess_mask(x, 1706, 1510),
+        augmentation_transforms=Augmenter(VAL_TRANSFORM).augment_image
+    )
+    train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=4)
+    val_dataloader = DataLoader(val_dataset, batch_size=8, shuffle=False, num_workers=4)
+
     model = SegmentationModel()
-    checkpoint_callback = ModelCheckpoint(dirpath='checkpoints/', monitor='val_loss', save_top_k=3)
+    # checkpoint_callback = ModelCheckpoint(dirpath='checkpoints/', monitor='val_loss', save_top_k=1)
     early_stopping = EarlyStopping(monitor="val_loss", mode="min", patience=3)
     visualizer = VisualizeValDataCallback()
 
     trainer = L.Trainer(
         gradient_clip_val=0.25, 
-        max_epochs=5, 
-        callbacks=[checkpoint_callback, visualizer, early_stopping],
-        logger=wandb_logger)
+        max_epochs=25, 
+        callbacks=[
+            # checkpoint_callback, 
+            visualizer, 
+            early_stopping],
+        logger=wandb_logger,
+        precision="16-mixed"
+        )
 
     trainer.fit(model, train_dataloader, val_dataloader)
 
