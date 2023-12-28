@@ -14,13 +14,13 @@ from typing import Tuple, TypeVar, List, Callable, Iterable
 
 T = TypeVar("T")
 
-
+IMAGE_SIZE = 256
 DEFAULT_TRANSFORM = A.Compose([
-    A.Resize(256,256, interpolation=cv2.INTER_NEAREST),
+    A.Resize(IMAGE_SIZE,IMAGE_SIZE, interpolation=cv2.INTER_NEAREST),
     A.HorizontalFlip(p=0.5),
     A.VerticalFlip(p=0.5),
     A.ShiftScaleRotate(scale_limit=0.5, rotate_limit=0, shift_limit=0.1, p=1, border_mode=0),
-    A.RandomCrop(height=256, width=256, always_apply=True),
+    A.RandomCrop(height=IMAGE_SIZE, width=IMAGE_SIZE, always_apply=True),
     A.RandomBrightness(p=1),
     A.OneOf(
         [
@@ -33,7 +33,7 @@ DEFAULT_TRANSFORM = A.Compose([
 ])
 
 VAL_TRANSFORM = A.Compose([
-    A.Resize(256,256, interpolation=cv2.INTER_NEAREST),
+    A.Resize(IMAGE_SIZE,IMAGE_SIZE, interpolation=cv2.INTER_NEAREST),
 ])
 
 
@@ -126,7 +126,7 @@ class SegmentationDataset(Dataset):
         image_files = self.images_file[start:end]
         mask_files = self.masks_file[start:end]
 
-        resize_fn =  Resize((256,256), interpolation=cv2.INTER_NEAREST)
+        resize_fn =  Resize((IMAGE_SIZE,IMAGE_SIZE), interpolation=cv2.INTER_NEAREST)
 
         images = []
         masks = []
